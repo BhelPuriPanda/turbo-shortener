@@ -69,6 +69,47 @@ test('URL Shortener API Tests', async (t) => {
         queryMock.mock.restore();
     });
 
+    // Test Case: POST /shorten - successfully shortens a URL with custom BASE_URL
+    // Verifies the response contains the expected short URL format with process.env.BASE_URL
+    await t.test('POST /shorten - successfully shortens a URL with custom BASE_URL', async () => {
+        const originalBaseUrl = process.env.BASE_URL;
+        process.env.BASE_URL = 'https://custom-domain.com';
+
+        try {
+            // Mock the db INSERT query to simulate inserting a record into the 'links' table
+            const queryMock = mock.method(pool, 'query', async (queryText, params) => {
+                return {
+                    rows: [{ id: 1, code: 'xyz789', original_url: 'https://google.com' }],
+                };
+            });
+
+            const response = await fetch(`${baseUrl}/shorten`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ url: 'https://google.com' }),
+            });
+
+            // Verify the response is 201 Created and fields match mock output with custom BASE_URL
+            assert.strictEqual(response.status, 201);
+            const data = await response.json();
+            assert.ok(data.code);
+            assert.strictEqual(data.original_url, 'https://google.com');
+            assert.strictEqual(data.short_url, `https://custom-domain.com/${data.code}`);
+            assert.strictEqual(queryMock.mock.callCount(), 1);
+
+            // Clean up the mock
+            queryMock.mock.restore();
+        } finally {
+            if (originalBaseUrl === undefined) {
+                delete process.env.BASE_URL;
+            } else {
+                process.env.BASE_URL = originalBaseUrl;
+            }
+        }
+    });
+
     // Test Case: GET /:code - redirection to target URL
     // Mocks fetching link details and tracking a redirection click, verifying that HTTP 302 is returned with the correct Location header
     await t.test('GET /:code - redirects to original URL', async () => {

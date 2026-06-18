@@ -22,7 +22,7 @@ router.post('/shorten', async (req, res) => {
 
         res.status(201).json({
             code,
-            short_url: `http://localhost:3000/${code}`,
+            short_url: `${process.env.BASE_URL || 'http://localhost:3000'}/${code}`,
             original_url: url,
         });
     } catch (err) {
