@@ -58,4 +58,4 @@ jobs:
             --region asia-south1 \
             --port 3000 \
             --allow-unauthenticated \
-            --set-env-vars DATABASE_URL=${{ secrets.DATABASE_URL }}
+            --set-secrets=DATABASE_URL=DATABASE_URL:latest
