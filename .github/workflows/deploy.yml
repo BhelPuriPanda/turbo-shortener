@@ -58,4 +58,4 @@ jobs:
             --region asia-south1 \
             --port 3000 \
             --allow-unauthenticated \
-            --set-secrets=DATABASE_URL=DATABASE_URL:latest
+            --set-secrets=DATABASE_URL=DATABASE_URL:latest,BASE_URL=BASE_URL:latest
