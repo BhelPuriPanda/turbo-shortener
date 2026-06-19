@@ -1,5 +1,6 @@
 import test, { mock } from 'node:test';
 import assert from 'node:assert';
+import { PubSub } from '@google-cloud/pubsub';
 
 // Set up test environment variables before importing app or db
 process.env.NODE_ENV = 'test';
@@ -113,15 +114,23 @@ test('URL Shortener API Tests', async (t) => {
     // Test Case: GET /:code - redirection to target URL
     // Mocks fetching link details and tracking a redirection click, verifying that HTTP 302 is returned with the correct Location header
     await t.test('GET /:code - redirects to original URL', async () => {
-        // Mock both SELECT links and INSERT clicks queries
+        // Mock SELECT links query
         const queryMock = mock.method(pool, 'query', async (queryText, params) => {
             if (queryText.includes('SELECT * FROM links')) {
                 return {
                     rows: [{ code: 'abc123', original_url: 'https://example.com' }],
                 };
             }
-            // INSERT INTO clicks to record analytics for the redirect
             return { rows: [] };
+        });
+
+        // Mock PubSub topic publishing
+        const publishMock = mock.fn(async () => 'mock-message-id');
+        const topicMock = mock.method(PubSub.prototype, 'topic', (name) => {
+            assert.strictEqual(name, 'link-clicked');
+            return {
+                publishMessage: publishMock,
+            };
         });
 
         const response = await fetch(`${baseUrl}/abc123`, {
@@ -131,10 +140,22 @@ test('URL Shortener API Tests', async (t) => {
         // Assert that the client receives a 302 redirecting them to the correct original url
         assert.strictEqual(response.status, 302);
         assert.strictEqual(response.headers.get('location'), 'https://example.com');
-        assert.strictEqual(queryMock.mock.callCount(), 2);
+        assert.strictEqual(queryMock.mock.callCount(), 1);
 
-        // Clean up the mock
+        // Yield execution to allow asynchronous PubSub publish to complete (fire and forget)
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        assert.strictEqual(topicMock.mock.callCount(), 1);
+        assert.strictEqual(publishMock.mock.callCount(), 1);
+
+        const call = publishMock.mock.calls[0];
+        const publishedData = JSON.parse(call.arguments[0].data.toString());
+        assert.strictEqual(publishedData.code, 'abc123');
+        assert.ok(publishedData.clicked_at);
+
+        // Clean up the mocks
         queryMock.mock.restore();
+        topicMock.mock.restore();
     });
 
     // Test Case: GET /:code - unknown code lookup failure

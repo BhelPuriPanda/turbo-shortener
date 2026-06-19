@@ -1,6 +1,10 @@
 import express from 'express';
 import { nanoid } from 'nanoid';
 import pool from './db.js';
+import { PubSub } from '@google-cloud/pubsub';
+
+const pubsub = new PubSub();
+const topicName = 'link-clicked';
 
 const router = express.Router();
 
@@ -44,14 +48,36 @@ router.get('/:code', async (req, res) => {
             return res.status(404).json({ error: 'Short link not found' });
         }
 
-        await pool.query(
-            'INSERT INTO clicks (code) VALUES ($1)',
-            [code]
+        // Redirect immediately
+        res.redirect(302, result.rows[0].original_url);
+
+        // Publish click event AFTER responding (fire and forget)
+        console.log("Publishing event for:", code);
+        const projectId = pubsub.projectId;
+        console.log("PubSub project:", projectId);
+        console.log("PubSub topic:", topicName);
+
+        const data = Buffer.from(
+            JSON.stringify({
+                code,
+                clicked_at: new Date().toISOString(),
+            })
         );
 
-        res.redirect(302, result.rows[0].original_url);
+        pubsub.topic(topicName)
+            .publishMessage({ data })
+            .then((messageId) => {
+                console.log("Published message:", messageId);
+            })
+            .catch((err) => {
+                console.error("Failed to publish click event:", err);
+            });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error(err);
+
+        if (!res.headersSent) {
+            res.status(500).json({ error: err.message });
+        }
     }
 });
 
